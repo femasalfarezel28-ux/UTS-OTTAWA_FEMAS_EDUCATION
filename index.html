@@ -1,0 +1,930 @@
+<!DOCTYPE html>
+<html lang="id">
+
+<head>
+    <!-- ===================== META & TITLE ===================== -->
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>WebGIS Viewer — Femas</title>
+    <meta name="description"
+        content="Aplikasi WebGIS interaktif menggunakan Leaflet.js dan OpenStreetMap untuk menampilkan data GeoJSON." />
+
+    <!-- ===================== LEAFLET CSS ===================== -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+
+    <!-- ===================== GOOGLE FONTS ===================== -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+
+    <!-- ===================== INLINE CSS ===================== -->
+    <style>
+        /* ---------- RESET & BASE ---------- */
+        *,
+        *::before,
+        *::after {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        html,
+        body {
+            height: 100%;
+            font-family: 'Inter', sans-serif;
+            background: #0f1117;
+            color: #e2e4eb;
+        }
+
+        /* ---------- LOADING OVERLAY ---------- */
+        .loading-overlay {
+            position: fixed;
+            inset: 0;
+            z-index: 9999;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            background: #0f1117;
+            transition: opacity .5s ease;
+        }
+
+        .loading-overlay.hide {
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        .spinner {
+            width: 44px;
+            height: 44px;
+            border: 4px solid rgba(139, 92, 246, .25);
+            border-top-color: #8b5cf6;
+            border-radius: 50%;
+            animation: spin .8s linear infinite;
+        }
+
+        @keyframes spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+
+        .loading-text {
+            margin-top: 16px;
+            font-size: 13px;
+            color: #8b8fa3;
+            letter-spacing: .5px;
+        }
+
+        /* ---------- APP LAYOUT ---------- */
+        .app {
+            display: flex;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        /* ---------- SIDEBAR ---------- */
+        .sidebar {
+            width: 320px;
+            min-width: 320px;
+            display: flex;
+            flex-direction: column;
+            background: linear-gradient(180deg, #161822 0%, #12141c 100%);
+            border-right: 1px solid rgba(255, 255, 255, .06);
+            transition: margin-left .35s cubic-bezier(.4, 0, .2, 1);
+            z-index: 500;
+        }
+
+        .sidebar.collapsed {
+            margin-left: -320px;
+        }
+
+        .sidebar-header {
+            padding: 20px;
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            border-bottom: 1px solid rgba(255, 255, 255, .06);
+        }
+
+        .sidebar-logo {
+            width: 42px;
+            height: 42px;
+            border-radius: 12px;
+            background: linear-gradient(135deg, #8b5cf6, #6d28d9);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+        }
+
+        .sidebar-title h1 {
+            font-size: 16px;
+            font-weight: 700;
+        }
+
+        .sidebar-title span {
+            font-size: 11px;
+            color: #6b7080;
+        }
+
+        .sidebar-body {
+            flex: 1;
+            overflow-y: auto;
+            padding: 16px;
+        }
+
+        .sidebar-body::-webkit-scrollbar {
+            width: 4px;
+        }
+
+        .sidebar-body::-webkit-scrollbar-thumb {
+            background: rgba(139, 92, 246, .3);
+            border-radius: 4px;
+        }
+
+        .section {
+            margin-bottom: 20px;
+        }
+
+        .section-label {
+            font-size: 10px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 1.2px;
+            color: #6b7080;
+            margin-bottom: 10px;
+        }
+
+        /* Layer cards */
+        .layer-card {
+            background: rgba(255, 255, 255, .04);
+            border: 1px solid rgba(255, 255, 255, .06);
+            border-radius: 12px;
+            padding: 14px;
+            margin-bottom: 8px;
+            transition: border-color .2s, background .2s;
+            cursor: pointer;
+        }
+
+        .layer-card:hover {
+            border-color: rgba(139, 92, 246, .35);
+            background: rgba(139, 92, 246, .06);
+        }
+
+        .layer-card-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .layer-card-title {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .layer-icon {
+            width: 28px;
+            height: 28px;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 13px;
+        }
+
+        .layer-icon.point {
+            background: rgba(96, 165, 250, .15);
+            color: #60a5fa;
+        }
+
+        .layer-icon.polygon {
+            background: rgba(52, 211, 153, .15);
+            color: #34d399;
+        }
+
+        .layer-icon.boundary {
+            background: rgba(251, 191, 36, .15);
+            color: #fbbf24;
+        }
+
+        .layer-name {
+            font-size: 13px;
+            font-weight: 600;
+        }
+
+        /* Toggle switch */
+        .toggle {
+            position: relative;
+            width: 38px;
+            height: 20px;
+        }
+
+        .toggle input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+
+        .toggle-slider {
+            position: absolute;
+            inset: 0;
+            background: #2a2d3a;
+            border-radius: 20px;
+            cursor: pointer;
+            transition: background .25s;
+        }
+
+        .toggle-slider::after {
+            content: '';
+            position: absolute;
+            left: 3px;
+            top: 3px;
+            width: 14px;
+            height: 14px;
+            border-radius: 50%;
+            background: #fff;
+            transition: transform .25s;
+        }
+
+        .toggle input:checked+.toggle-slider {
+            background: #8b5cf6;
+        }
+
+        .toggle input:checked+.toggle-slider::after {
+            transform: translateX(18px);
+        }
+
+        .layer-meta {
+            margin-top: 10px;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+
+        .layer-badge {
+            font-size: 10px;
+            padding: 3px 8px;
+            border-radius: 6px;
+            background: rgba(255, 255, 255, .06);
+            color: #8b8fa3;
+        }
+
+        /* Info card */
+        .info-card {
+            background: rgba(255, 255, 255, .04);
+            border: 1px solid rgba(255, 255, 255, .06);
+            border-radius: 12px;
+            padding: 14px;
+        }
+
+        .info-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 6px 0;
+            border-bottom: 1px solid rgba(255, 255, 255, .04);
+        }
+
+        .info-row:last-child {
+            border-bottom: none;
+        }
+
+        .info-label {
+            font-size: 12px;
+            color: #6b7080;
+        }
+
+        .info-value {
+            font-size: 12px;
+            font-weight: 500;
+        }
+
+        /* Data tree */
+        .tree-container {
+            max-height: 260px;
+            overflow-y: auto;
+        }
+
+        .tree-container::-webkit-scrollbar {
+            width: 4px;
+        }
+
+        .tree-container::-webkit-scrollbar-thumb {
+            background: rgba(139, 92, 246, .3);
+            border-radius: 4px;
+        }
+
+        .tree-item {
+            font-size: 11px;
+            padding: 5px 8px;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: background .15s;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .tree-item:hover {
+            background: rgba(139, 92, 246, .1);
+        }
+
+        .sidebar-footer {
+            padding: 14px 20px;
+            border-top: 1px solid rgba(255, 255, 255, .06);
+            font-size: 11px;
+            color: #4b5060;
+            text-align: center;
+        }
+
+        .sidebar-footer a {
+            color: #8b5cf6;
+            text-decoration: none;
+        }
+
+        /* ---------- MAP WRAPPER ---------- */
+        .map-wrapper {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            position: relative;
+        }
+
+        /* Top bar */
+        .top-bar {
+            position: absolute;
+            top: 12px;
+            left: 12px;
+            right: 12px;
+            z-index: 450;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .btn-menu {
+            width: 40px;
+            height: 40px;
+            border: none;
+            border-radius: 10px;
+            background: rgba(22, 24, 34, .85);
+            backdrop-filter: blur(12px);
+            color: #e2e4eb;
+            font-size: 18px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border: 1px solid rgba(255, 255, 255, .08);
+            transition: background .2s;
+        }
+
+        .btn-menu:hover {
+            background: rgba(139, 92, 246, .25);
+        }
+
+        .coord-box {
+            margin-left: auto;
+            padding: 8px 14px;
+            border-radius: 10px;
+            background: rgba(22, 24, 34, .85);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, .08);
+            font-size: 11px;
+            color: #8b8fa3;
+            display: flex;
+            gap: 12px;
+        }
+
+        .coord-box span.val {
+            color: #e2e4eb;
+            font-weight: 500;
+            font-variant-numeric: tabular-nums;
+        }
+
+        /* Map */
+        #map {
+            flex: 1;
+            z-index: 1;
+        }
+
+        /* Basemap switcher */
+        .basemap-bar {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 450;
+            display: flex;
+            gap: 8px;
+            padding: 6px;
+            border-radius: 14px;
+            background: rgba(22, 24, 34, .85);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, .08);
+        }
+
+        .bm-btn {
+            width: 52px;
+            height: 52px;
+            border-radius: 10px;
+            border: 2px solid transparent;
+            background-size: cover;
+            background-position: center;
+            cursor: pointer;
+            transition: border-color .2s, transform .15s;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .bm-btn:hover {
+            transform: scale(1.08);
+        }
+
+        .bm-btn.active {
+            border-color: #8b5cf6;
+        }
+
+        .bm-btn::after {
+            content: attr(data-label);
+            position: absolute;
+            bottom: 2px;
+            left: 0;
+            right: 0;
+            text-align: center;
+            font-size: 8px;
+            font-weight: 600;
+            color: #fff;
+            text-shadow: 0 1px 3px rgba(0, 0, 0, .7);
+        }
+
+        /* Popup styling */
+        .leaflet-popup-content-wrapper {
+            background: rgba(22, 24, 34, .92) !important;
+            backdrop-filter: blur(12px);
+            color: #e2e4eb !important;
+            border-radius: 12px !important;
+            border: 1px solid rgba(255, 255, 255, .1);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, .4) !important;
+        }
+
+        .leaflet-popup-tip {
+            background: rgba(22, 24, 34, .92) !important;
+        }
+
+        .popup-title {
+            font-size: 14px;
+            font-weight: 700;
+            margin-bottom: 8px;
+            color: #a78bfa;
+        }
+
+        .popup-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .popup-table td {
+            padding: 4px 6px;
+            font-size: 11px;
+            border-bottom: 1px solid rgba(255, 255, 255, .06);
+        }
+
+        .popup-table td:first-child {
+            color: #6b7080;
+            white-space: nowrap;
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .sidebar {
+                position: fixed;
+                left: 0;
+                top: 0;
+                bottom: 0;
+                z-index: 600;
+            }
+
+            .sidebar.collapsed {
+                margin-left: -320px;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <!-- ===================== LOADING SCREEN ===================== -->
+    <div class="loading-overlay" id="loader">
+        <div class="spinner"></div>
+        <p class="loading-text">Memuat peta …</p>
+    </div>
+
+    <!-- ===================== APP CONTAINER ===================== -->
+    <div class="app">
+        <!-- ========== SIDEBAR ========== -->
+        <aside class="sidebar" id="sidebar">
+            <div class="sidebar-header">
+                <div class="sidebar-logo">🌍</div>
+                <div class="sidebar-title">
+                    <h1>WebGIS Viewer</h1>
+                    <span>Leaflet + OpenStreetMap</span>
+                </div>
+            </div>
+
+            <div class="sidebar-body">
+                <!-- Layer: Webgis_Femas -->
+                <div class="section">
+                    <div class="section-label">Layer Data</div>
+
+                    <div class="layer-card" id="card-main">
+                        <div class="layer-card-header">
+                            <div class="layer-card-title">
+                                <div class="layer-icon point">📍</div>
+                                <span class="layer-name">Webgis Femas</span>
+                            </div>
+                            <label class="toggle" onclick="event.stopPropagation()">
+                                <input type="checkbox" id="toggle-main" checked />
+                                <span class="toggle-slider"></span>
+                            </label>
+                        </div>
+                        <div class="layer-meta">
+                            <span class="layer-badge" id="badge-main-type">—</span>
+                            <span class="layer-badge" id="badge-main-count">—</span>
+                        </div>
+                    </div>
+
+                    <div class="layer-card" id="card-boundary">
+                        <div class="layer-card-header">
+                            <div class="layer-card-title">
+                                <div class="layer-icon boundary">⬡</div>
+                                <span class="layer-name">Clipping Boundary</span>
+                            </div>
+                            <label class="toggle" onclick="event.stopPropagation()">
+                                <input type="checkbox" id="toggle-boundary" checked />
+                                <span class="toggle-slider"></span>
+                            </label>
+                        </div>
+                        <div class="layer-meta">
+                            <span class="layer-badge">Polygon</span>
+                            <span class="layer-badge">1 feature</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Informasi -->
+                <div class="section">
+                    <div class="section-label">Informasi</div>
+                    <div class="info-card">
+                        <div class="info-row"><span class="info-label">Sumber Data</span><span
+                                class="info-value">OpenStreetMap</span></div>
+                        <div class="info-row"><span class="info-label">Format</span><span
+                                class="info-value">GeoJSON</span></div>
+                        <div class="info-row"><span class="info-label">CRS</span><span
+                                class="info-value">EPSG:4326</span></div>
+                        <div class="info-row"><span class="info-label">Lisensi</span><span class="info-value">ODbL
+                                1.0</span></div>
+                    </div>
+                </div>
+
+                <!-- Data Tree -->
+                <div class="section">
+                    <div class="section-label">Data Tree (Fitur)</div>
+                    <div class="info-card">
+                        <div class="tree-container" id="data-tree">
+                            <p style="font-size:11px;color:#5f6578;">Memuat data …</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="sidebar-footer">
+                Powered by <a href="https://leafletjs.com" target="_blank">Leaflet</a> &amp;
+                <a href="https://www.openstreetmap.org" target="_blank">OSM</a>
+            </div>
+        </aside>
+
+        <!-- ========== MAP AREA ========== -->
+        <div class="map-wrapper">
+            <!-- Top Bar -->
+            <div class="top-bar">
+                <button class="btn-menu" id="btn-sidebar" title="Toggle Sidebar">☰</button>
+                <div class="coord-box">
+                    <div>Lat <span class="val" id="lat-val">—</span></div>
+                    <div>Lng <span class="val" id="lng-val">—</span></div>
+                </div>
+            </div>
+
+            <!-- Peta Leaflet -->
+            <div id="map"></div>
+
+            <!-- Basemap Switcher -->
+            <div class="basemap-bar">
+                <div class="bm-btn active" data-bm="osm" data-label="Street"
+                    style="background-image:url('https://tile.openstreetmap.org/3/4/2.png')"></div>
+                <div class="bm-btn" data-bm="dark" data-label="Dark"
+                    style="background-image:url('https://basemaps.cartocdn.com/dark_all/3/4/2.png')"></div>
+                <div class="bm-btn" data-bm="satellite" data-label="Sat"
+                    style="background-image:url('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/3/2/4')">
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===================== LEAFLET JS ===================== -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+    <!-- ===================== JAVASCRIPT UTAMA ===================== -->
+    <script>
+        // --------------------------------------------------------
+        // 1) INISIALISASI PETA
+        //    Membuat instance peta Leaflet dengan center di Ottawa
+        // --------------------------------------------------------
+        const map = L.map('map', {
+            center: [45.35, -75.7],
+            zoom: 10,
+            zoomControl: true
+        });
+
+        // --------------------------------------------------------
+        // 2) DEFINISI BASEMAP
+        //    Menyediakan 3 pilihan basemap: OSM, Dark, Satellite
+        // --------------------------------------------------------
+        const basemaps = {
+            osm: L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                maxZoom: 19,
+                attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a>'
+            }),
+            dark: L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+                maxZoom: 19,
+                attribution: '&copy; <a href="https://carto.com/">CARTO</a>'
+            }),
+            satellite: L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+                maxZoom: 19,
+                attribution: '&copy; Esri'
+            })
+        };
+
+        // Tambahkan basemap default (OSM)
+        basemaps.osm.addTo(map);
+        let activeBasemap = 'osm';
+
+        // --------------------------------------------------------
+        // 3) VARIABEL LAYER GEOJSON
+        // --------------------------------------------------------
+        let mainLayer = null;       // Layer utama (Webgis_Femas)
+        let boundaryLayer = null;   // Layer batas (clipping_boundary)
+        let mainData = null;        // Data GeoJSON mentah
+
+        // --------------------------------------------------------
+        // 4) FUNGSI: Membuat konten popup dari properties
+        //    Setiap fitur GeoJSON menampilkan atribut-atributnya
+        // --------------------------------------------------------
+        function buildPopup(props) {
+            // Judul popup menggunakan nama fitur (jika ada)
+            const title = props.name || props.osm_id || 'Fitur';
+            let rows = '';
+
+            // Iterasi setiap property dan tampilkan yang memiliki nilai
+            for (const [key, value] of Object.entries(props)) {
+                if (value !== null && value !== undefined && value !== '') {
+                    rows += `<tr><td>${key}</td><td>${value}</td></tr>`;
+                }
+            }
+
+            return `
+        <div class="popup-title">${title}</div>
+        <table class="popup-table">${rows}</table>
+      `;
+        }
+
+        // --------------------------------------------------------
+        // 5) FUNGSI: Style untuk layer polygon
+        // --------------------------------------------------------
+        function mainStyle(feature) {
+            return {
+                color: '#8b5cf6',
+                weight: 2,
+                opacity: 0.8,
+                fillColor: '#8b5cf6',
+                fillOpacity: 0.15
+            };
+        }
+
+        function boundaryStyle() {
+            return {
+                color: '#fbbf24',
+                weight: 2.5,
+                opacity: 0.7,
+                fillColor: '#fbbf24',
+                fillOpacity: 0.05,
+                dashArray: '8 4'
+            };
+        }
+
+        // --------------------------------------------------------
+        // 6) FUNGSI: Custom marker untuk fitur Point
+        // --------------------------------------------------------
+        function pointToMarker(feature, latlng) {
+            return L.circleMarker(latlng, {
+                radius: 6,
+                fillColor: '#60a5fa',
+                color: '#3b82f6',
+                weight: 2,
+                opacity: 0.9,
+                fillOpacity: 0.7
+            });
+        }
+
+        // --------------------------------------------------------
+        // 7) MEMUAT DATA GEOJSON DARI FOLDER data/
+        //    Menggunakan fetch API untuk membaca file GeoJSON
+        // --------------------------------------------------------
+        async function loadGeoJSON(url) {
+            const response = await fetch(url);
+            if (!response.ok) throw new Error(`Gagal memuat: ${url}`);
+            return response.json();
+        }
+
+        // --------------------------------------------------------
+        // 8) FUNGSI: Membangun Data Tree di sidebar
+        //    Menampilkan daftar fitur yang bisa diklik untuk zoom
+        // --------------------------------------------------------
+        function buildDataTree(geojson) {
+            const container = document.getElementById('data-tree');
+            container.innerHTML = '';
+
+            if (!geojson.features || geojson.features.length === 0) {
+                container.innerHTML = '<p style="font-size:11px;color:#5f6578;">Tidak ada data.</p>';
+                return;
+            }
+
+            geojson.features.forEach((feature, idx) => {
+                const name = (feature.properties && feature.properties.name) || `Fitur #${idx + 1}`;
+                const div = document.createElement('div');
+                div.className = 'tree-item';
+                div.textContent = name;
+
+                // Klik untuk zoom ke fitur
+                div.addEventListener('click', () => {
+                    if (!mainLayer) return;
+                    const layers = mainLayer.getLayers();
+                    if (layers[idx]) {
+                        const target = layers[idx];
+                        if (target.getLatLng) {
+                            map.setView(target.getLatLng(), 16);
+                        } else if (target.getBounds) {
+                            map.fitBounds(target.getBounds(), { padding: [40, 40] });
+                        }
+                        target.openPopup();
+                    }
+                });
+
+                container.appendChild(div);
+            });
+        }
+
+        // --------------------------------------------------------
+        // 9) FUNGSI UTAMA: Inisialisasi semua data
+        // --------------------------------------------------------
+        async function init() {
+            try {
+                // 9a) Muat data utama (Webgis_Femas.geojson)
+                mainData = await loadGeoJSON('./data/Webgis_Femas.geojson');
+
+                // Hitung tipe geometri
+                const types = new Set();
+                if (mainData.features) {
+                    mainData.features.forEach(f => { if (f.geometry) types.add(f.geometry.type); });
+                }
+
+                // Update badge info di sidebar
+                document.getElementById('badge-main-type').textContent = [...types].join(', ');
+                document.getElementById('badge-main-count').textContent = `${mainData.features.length} features`;
+
+                // Buat layer GeoJSON dengan popup dan style
+                mainLayer = L.geoJSON(mainData, {
+                    style: mainStyle,
+                    pointToLayer: pointToMarker,
+                    onEachFeature: function (feature, layer) {
+                        // Bind popup dengan konten atribut
+                        if (feature.properties) {
+                            layer.bindPopup(buildPopup(feature.properties), { maxWidth: 300 });
+                        }
+                    }
+                }).addTo(map);
+
+                // Fit bounds agar peta menyesuaikan cakupan data
+                map.fitBounds(mainLayer.getBounds(), { padding: [50, 50] });
+
+                // Bangun data tree di sidebar
+                buildDataTree(mainData);
+
+                // 9b) Muat clipping boundary
+                const bndRaw = await loadGeoJSON('./data/clipping_boundary.geojson');
+
+                // Clipping boundary bisa berupa Polygon langsung (bukan FeatureCollection)
+                let bndGeoJSON;
+                if (bndRaw.type === 'FeatureCollection') {
+                    bndGeoJSON = bndRaw;
+                } else if (bndRaw.type === 'Feature') {
+                    bndGeoJSON = { type: 'FeatureCollection', features: [bndRaw] };
+                } else {
+                    // Jika hanya geometri saja (Polygon), bungkus menjadi Feature
+                    bndGeoJSON = {
+                        type: 'FeatureCollection',
+                        features: [{ type: 'Feature', geometry: bndRaw, properties: { name: 'Clipping Boundary' } }]
+                    };
+                }
+
+                boundaryLayer = L.geoJSON(bndGeoJSON, {
+                    style: boundaryStyle,
+                    onEachFeature: function (feature, layer) {
+                        layer.bindPopup('<div class="popup-title">Clipping Boundary</div>');
+                    }
+                }).addTo(map);
+
+            } catch (err) {
+                console.error('Error loading GeoJSON:', err);
+            } finally {
+                // Sembunyikan loading screen
+                document.getElementById('loader').classList.add('hide');
+            }
+        }
+
+        // Jalankan inisialisasi
+        init();
+
+        // --------------------------------------------------------
+        // 10) EVENT: Toggle sidebar
+        // --------------------------------------------------------
+        document.getElementById('btn-sidebar').addEventListener('click', () => {
+            document.getElementById('sidebar').classList.toggle('collapsed');
+            // Perlu invalidateSize agar peta menyesuaikan ukuran
+            setTimeout(() => map.invalidateSize(), 400);
+        });
+
+        // --------------------------------------------------------
+        // 11) EVENT: Toggle layer visibility
+        // --------------------------------------------------------
+        document.getElementById('toggle-main').addEventListener('change', function () {
+            if (this.checked) {
+                if (mainLayer) mainLayer.addTo(map);
+            } else {
+                if (mainLayer) map.removeLayer(mainLayer);
+            }
+        });
+
+        document.getElementById('toggle-boundary').addEventListener('change', function () {
+            if (this.checked) {
+                if (boundaryLayer) boundaryLayer.addTo(map);
+            } else {
+                if (boundaryLayer) map.removeLayer(boundaryLayer);
+            }
+        });
+
+        // --------------------------------------------------------
+        // 12) EVENT: Zoom to layer saat klik layer card
+        // --------------------------------------------------------
+        document.getElementById('card-main').addEventListener('click', () => {
+            if (mainLayer && map.hasLayer(mainLayer)) {
+                map.fitBounds(mainLayer.getBounds(), { padding: [50, 50] });
+            }
+        });
+
+        document.getElementById('card-boundary').addEventListener('click', () => {
+            if (boundaryLayer && map.hasLayer(boundaryLayer)) {
+                map.fitBounds(boundaryLayer.getBounds(), { padding: [50, 50] });
+            }
+        });
+
+        // --------------------------------------------------------
+        // 13) EVENT: Tampilkan koordinat kursor di top bar
+        // --------------------------------------------------------
+        map.on('mousemove', function (e) {
+            document.getElementById('lat-val').textContent = e.latlng.lat.toFixed(5);
+            document.getElementById('lng-val').textContent = e.latlng.lng.toFixed(5);
+        });
+
+        // --------------------------------------------------------
+        // 14) EVENT: Basemap switcher
+        // --------------------------------------------------------
+        document.querySelectorAll('.bm-btn').forEach(btn => {
+            btn.addEventListener('click', function () {
+                const key = this.dataset.bm;
+                if (key === activeBasemap) return;
+
+                // Hapus basemap lama, tambahkan yang baru
+                map.removeLayer(basemaps[activeBasemap]);
+                basemaps[key].addTo(map);
+                activeBasemap = key;
+
+                // Update state tombol aktif
+                document.querySelectorAll('.bm-btn').forEach(b => b.classList.remove('active'));
+                this.classList.add('active');
+            });
+        });
+    </script>
+</body>
+
+</html>
