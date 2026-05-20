@@ -1,0 +1,878 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Education Distribution Map of Ottawa</title>
+    <meta name="description" content="Advanced WebGIS for Ottawa Education with history, bookmarks, and weather." />
+    
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/Leaflet.awesome-markers/2.0.2/leaflet.awesome-markers.css" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+    
+    <style>
+        /* ===== RESET ===== */
+*,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+html,body{height:100%;font-family:'Inter',sans-serif;background:#0b0d14;color:#e2e4eb;overflow:hidden}
+
+/* ===== SPLASH SCREEN ===== */
+.splash{position:fixed;inset:0;z-index:10000;display:flex;flex-direction:column;align-items:center;justify-content:center;background:linear-gradient(135deg,#0b0d14 0%,#1a1035 50%,#0b0d14 100%);transition:opacity .8s ease,visibility .8s}
+.splash.hide{opacity:0;visibility:hidden}
+.splash-logo{width:90px;height:90px;border-radius:22px;background:linear-gradient(135deg,#8b5cf6,#6d28d9);display:flex;align-items:center;justify-content:center;font-size:44px;margin-bottom:24px;box-shadow:0 8px 40px rgba(139,92,246,.4);animation:pulse-logo 2s ease infinite}
+@keyframes pulse-logo{0%,100%{transform:scale(1);box-shadow:0 8px 40px rgba(139,92,246,.4)}50%{transform:scale(1.05);box-shadow:0 12px 50px rgba(139,92,246,.6)}}
+.splash-title{font-size:22px;font-weight:700;letter-spacing:1px;margin-bottom:6px;background:linear-gradient(90deg,#a78bfa,#60a5fa);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.splash-sub{font-size:12px;color:#6b7080;margin-bottom:28px}
+.progress-wrap{width:260px;height:4px;background:rgba(255,255,255,.08);border-radius:4px;overflow:hidden}
+.progress-bar{height:100%;width:0%;background:linear-gradient(90deg,#8b5cf6,#60a5fa);border-radius:4px;transition:width .3s ease}
+.progress-text{margin-top:10px;font-size:11px;color:#6b7080;font-variant-numeric:tabular-nums}
+
+/* ===== APP ===== */
+.app{display:flex;height:100vh;overflow:hidden;opacity:0;transition:opacity .5s}
+.app.show{opacity:1}
+
+/* ===== TOPBAR ===== */
+.topbar{position:absolute;top:0;left:0;right:0;z-index:800;height:52px;display:flex;align-items:center;padding:0 16px;gap:10px;background:rgba(11,13,20,.85);backdrop-filter:blur(16px);border-bottom:1px solid rgba(255,255,255,.06)}
+.btn-icon{width:38px;height:38px;border:none;border-radius:10px;background:rgba(255,255,255,.06);color:#e2e4eb;font-size:16px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .2s;border:1px solid rgba(255,255,255,.06);flex-shrink:0}
+.btn-icon:hover{background:rgba(139,92,246,.2);border-color:rgba(139,92,246,.3)}
+.topbar-title{display:flex;align-items:center;gap:10px}
+.topbar-logo{width:32px;height:32px;border-radius:8px;background:linear-gradient(135deg,#8b5cf6,#6d28d9);display:flex;align-items:center;justify-content:center;font-size:16px}
+.topbar-title h1{font-size:15px;font-weight:700;white-space:nowrap}
+.topbar-title span{font-size:10px;color:#6b7080}
+.topbar-spacer{flex:1}
+.lang-select{height:32px;padding:0 8px;border-radius:8px;border:1px solid rgba(255,255,255,.08);background:rgba(255,255,255,.04);color:#e2e4eb;font-size:11px;font-family:'Inter',sans-serif;cursor:pointer;outline:none}
+.weather-widget{display:flex;align-items:center;gap:8px;padding:6px 12px;border-radius:10px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.06);font-size:11px;color:#8b8fa3}
+.weather-widget .w-icon{font-size:18px}
+.weather-widget .w-temp{font-weight:600;color:#e2e4eb;font-size:13px}
+.weather-widget .w-time{font-variant-numeric:tabular-nums}
+.coord-box{padding:6px 10px;border-radius:8px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.06);font-size:10px;color:#6b7080;display:flex;gap:10px}
+.coord-box .val{color:#e2e4eb;font-weight:500;font-variant-numeric:tabular-nums}
+
+/* ===== SEARCH ===== */
+.search-box{position:relative;width:260px}
+.search-box input{width:100%;height:34px;padding:0 32px 0 12px;border-radius:8px;border:1px solid rgba(255,255,255,.08);background:rgba(255,255,255,.04);color:#e2e4eb;font-size:12px;font-family:'Inter',sans-serif;outline:none;transition:border .2s}
+.search-box input:focus{border-color:rgba(139,92,246,.5)}
+.search-box input::placeholder{color:#5f6578}
+.search-box .s-icon{position:absolute;right:10px;top:50%;transform:translateY(-50%);color:#6b7080;font-size:12px;pointer-events:none}
+.search-results{position:absolute;top:40px;left:0;right:0;background:rgba(16,18,28,.95);backdrop-filter:blur(16px);border:1px solid rgba(255,255,255,.08);border-radius:10px;max-height:260px;overflow-y:auto;display:none;z-index:801}
+.search-results.show{display:block}
+.search-result-item{padding:8px 12px;font-size:11px;cursor:pointer;transition:background .15s;display:flex;align-items:center;gap:8px;border-bottom:1px solid rgba(255,255,255,.04)}
+.search-result-item:last-child{border-bottom:none}
+.search-result-item:hover{background:rgba(139,92,246,.1)}
+.sr-name{font-weight:500;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sr-cat{font-size:9px;color:#6b7080}
+
+/* ===== SIDEBAR ===== */
+.sidebar{width:300px;min-width:300px;display:flex;flex-direction:column;background:rgba(16,18,28,.95);backdrop-filter:blur(20px);border-right:1px solid rgba(255,255,255,.06);transition:margin-left .35s cubic-bezier(.4,0,.2,1);z-index:500;margin-top:52px}
+.sidebar.collapsed{margin-left:-300px}
+.sidebar-body{flex:1;overflow-y:auto;padding:14px}
+.sidebar-body::-webkit-scrollbar{width:4px}
+.sidebar-body::-webkit-scrollbar-thumb{background:rgba(139,92,246,.3);border-radius:4px}
+.section{margin-bottom:14px}
+.section-label{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1.2px;color:#6b7080;margin-bottom:8px;display:flex;align-items:center;gap:6px}
+
+/* Category Cards */
+.cat-card{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.06);border-radius:10px;padding:10px 12px;margin-bottom:5px;display:flex;align-items:center;gap:10px;cursor:pointer;transition:all .2s}
+.cat-card:hover{border-color:rgba(139,92,246,.3);background:rgba(139,92,246,.06);transform:translateX(2px)}
+.cat-icon{width:32px;height:32px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0}
+.cat-info{flex:1;min-width:0}
+.cat-name{font-size:11px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cat-count{font-size:9px;color:#6b7080}
+.cat-toggle{position:relative;width:34px;height:18px;flex-shrink:0}
+.cat-toggle input{opacity:0;width:0;height:0}
+.cat-toggle .slider{position:absolute;inset:0;background:#2a2d3a;border-radius:18px;cursor:pointer;transition:background .25s}
+.cat-toggle .slider::after{content:'';position:absolute;left:2px;top:2px;width:14px;height:14px;border-radius:50%;background:#fff;transition:transform .25s}
+.cat-toggle input:checked+.slider{background:#8b5cf6}
+.cat-toggle input:checked+.slider::after{transform:translateX(16px)}
+
+/* Data Tree */
+.tree-wrap{max-height:200px;overflow-y:auto;background:rgba(255,255,255,.02);border-radius:8px;padding:4px}
+.tree-wrap::-webkit-scrollbar{width:3px}
+.tree-wrap::-webkit-scrollbar-thumb{background:rgba(139,92,246,.3);border-radius:3px}
+.tree-item{font-size:10px;padding:5px 8px;border-radius:6px;cursor:pointer;transition:all .15s;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:flex;align-items:center;gap:6px}
+.tree-item:hover{background:rgba(139,92,246,.12);transform:translateX(2px)}
+
+/* Info card */
+.info-card{background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.06);border-radius:10px;padding:10px 12px}
+.info-row{display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid rgba(255,255,255,.04)}
+.info-row:last-child{border-bottom:none}
+.info-label{font-size:10px;color:#6b7080}
+.info-value{font-size:10px;font-weight:500}
+
+.sidebar-footer{padding:10px 16px;border-top:1px solid rgba(255,255,255,.06);font-size:9px;color:#4b5060;text-align:center}
+.sidebar-footer a{color:#8b5cf6;text-decoration:none}
+
+/* ===== MAP WRAPPER ===== */
+.map-wrapper{flex:1;display:flex;flex-direction:column;position:relative;margin-top:52px}
+#map{flex:1;z-index:1}
+
+/* Zoom Control */
+.leaflet-top.leaflet-right{top:50%!important;transform:translateY(-50%);right:12px!important}
+.leaflet-control-zoom{border:none!important;border-radius:10px!important;overflow:hidden;box-shadow:0 4px 16px rgba(0,0,0,.3)!important;background:rgba(16,18,28,.88)!important;backdrop-filter:blur(16px);border:1px solid rgba(255,255,255,.08)!important;margin:0!important}
+.leaflet-control-zoom a{background:rgba(16,18,28,.88)!important;color:#e2e4eb!important;width:36px!important;height:36px!important;line-height:36px!important;font-size:16px!important;border:none!important;border-bottom:1px solid rgba(255,255,255,.06)!important;transition:background .2s}
+.leaflet-control-zoom a:hover{background:rgba(139,92,246,.25)!important}
+.leaflet-control-zoom a:last-child{border-bottom:none!important}
+
+/* ===== LEGEND ===== */
+.legend-panel{position:absolute;bottom:80px;left:14px;z-index:600;background:rgba(16,18,28,.9);backdrop-filter:blur(16px);border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:12px 14px;min-width:170px}
+.legend-title{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:#6b7080;margin-bottom:8px}
+.legend-item{display:flex;align-items:center;gap:8px;padding:3px 0;font-size:10px}
+.legend-dot{width:12px;height:12px;border-radius:3px;flex-shrink:0}
+
+/* ===== BASEMAP BAR ===== */
+.basemap-bar{position:absolute;bottom:16px;left:50%;transform:translateX(-50%);z-index:600;display:flex;gap:6px;padding:5px;border-radius:12px;background:rgba(16,18,28,.88);backdrop-filter:blur(16px);border:1px solid rgba(255,255,255,.08)}
+.bm-btn{width:48px;height:48px;border-radius:8px;border:2px solid transparent;background-size:cover;background-position:center;cursor:pointer;transition:all .2s;position:relative;overflow:hidden}
+.bm-btn:hover{transform:scale(1.08)}
+.bm-btn.active{border-color:#8b5cf6}
+.bm-btn::after{content:attr(data-label);position:absolute;bottom:2px;left:0;right:0;text-align:center;font-size:7px;font-weight:600;color:#fff;text-shadow:0 1px 3px rgba(0,0,0,.8)}
+
+/* ===== POPUP ===== */
+.leaflet-popup-content-wrapper{background:rgba(16,18,28,.94)!important;backdrop-filter:blur(14px);color:#e2e4eb!important;border-radius:12px!important;border:1px solid rgba(255,255,255,.1);box-shadow:0 8px 32px rgba(0,0,0,.5)!important}
+.leaflet-popup-tip{background:rgba(16,18,28,.94)!important}
+.popup-title{font-size:13px;font-weight:700;margin-bottom:6px;color:#a78bfa;display:flex;align-items:center;gap:6px}
+.popup-cat-badge{display:inline-block;padding:2px 8px;border-radius:6px;font-size:9px;font-weight:600}
+.popup-hours{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.06);border-radius:8px;padding:8px 10px;margin-top:6px}
+.popup-links{display:flex;flex-wrap:wrap;gap:5px;margin-top:6px}
+.popup-link-btn{display:inline-flex;align-items:center;gap:4px;padding:5px 10px;border-radius:6px;font-size:9px;font-weight:600;text-decoration:none;transition:all .2s;cursor:pointer}
+.popup-link-btn:hover{transform:translateY(-1px);filter:brightness(1.2)}
+.popup-link-btn.official{background:rgba(34,197,94,.15);color:#34d399;border:1px solid rgba(34,197,94,.2)}
+.popup-link-btn.search{background:rgba(139,92,246,.15);color:#a78bfa;border:1px solid rgba(139,92,246,.2)}
+.popup-link-btn.maps{background:rgba(59,130,246,.15);color:#60a5fa;border:1px solid rgba(59,130,246,.2)}
+.popup-table{width:100%;border-collapse:collapse;margin-top:6px}
+.popup-table td{padding:3px 5px;font-size:10px;border-bottom:1px solid rgba(255,255,255,.06)}
+.popup-table td:first-child{color:#6b7080;white-space:nowrap}
+
+/* ===== CHATBOT ===== */
+.chat-toggle{background:linear-gradient(135deg,#8b5cf6,#6d28d9);border:none;color:#fff;font-size:18px;cursor:pointer;z-index:900;display:flex;align-items:center;justify-content:center;box-shadow:0 6px 24px rgba(139,92,246,.4);transition:all .3s}
+.chat-toggle:hover{transform:scale(1.1)}
+.chatbot{position:fixed;bottom:80px;right:20px;width:340px;max-height:440px;background:rgba(16,18,28,.96);backdrop-filter:blur(20px);border:1px solid rgba(255,255,255,.08);border-radius:16px;z-index:899;display:flex;flex-direction:column;overflow:hidden;opacity:0;transform:translateY(20px) scale(.95);pointer-events:none;transition:all .3s;box-shadow:0 16px 48px rgba(0,0,0,.5)}
+.chatbot.open{opacity:1;transform:translateY(0) scale(1);pointer-events:all}
+.chat-header{padding:14px 16px;display:flex;align-items:center;gap:10px;border-bottom:1px solid rgba(255,255,255,.06)}
+.chat-header-icon{width:32px;height:32px;border-radius:8px;background:linear-gradient(135deg,#8b5cf6,#6d28d9);display:flex;align-items:center;justify-content:center;font-size:14px}
+.chat-header-text h3{font-size:12px;font-weight:600}
+.chat-header-text span{font-size:9px;color:#6b7080}
+.chat-close{margin-left:auto;background:none;border:none;color:#6b7080;font-size:14px;cursor:pointer;padding:4px;transition:color .2s}
+.chat-close:hover{color:#e2e4eb}
+.chat-messages{flex:1;overflow-y:auto;padding:12px;min-height:220px;max-height:300px}
+.chat-messages::-webkit-scrollbar{width:3px}
+.chat-messages::-webkit-scrollbar-thumb{background:rgba(139,92,246,.3);border-radius:3px}
+.chat-msg{margin-bottom:10px;display:flex}
+.chat-msg.bot{justify-content:flex-start}
+.chat-msg.user{justify-content:flex-end}
+.chat-bubble{max-width:85%;padding:8px 12px;border-radius:12px;font-size:11px;line-height:1.5}
+.chat-msg.bot .chat-bubble{background:rgba(255,255,255,.06);border-bottom-left-radius:4px;color:#d1d5e0}
+.chat-msg.user .chat-bubble{background:linear-gradient(135deg,#8b5cf6,#6d28d9);border-bottom-right-radius:4px;color:#fff}
+.chat-input-area{padding:10px;border-top:1px solid rgba(255,255,255,.06);display:flex;gap:6px}
+.chat-input-area input{flex:1;height:34px;padding:0 12px;border-radius:8px;border:1px solid rgba(255,255,255,.08);background:rgba(255,255,255,.04);color:#e2e4eb;font-size:11px;font-family:'Inter',sans-serif;outline:none}
+.chat-input-area input:focus{border-color:rgba(139,92,246,.5)}
+.chat-input-area button{width:34px;height:34px;border-radius:8px;border:none;background:linear-gradient(135deg,#8b5cf6,#6d28d9);color:#fff;font-size:13px;cursor:pointer;display:flex;align-items:center;justify-content:center}
+
+/* ===== ROUTE PANEL ===== */
+.route-panel{position:absolute;top:10px;right:60px;z-index:700;width:290px;background:rgba(16,18,28,.95);backdrop-filter:blur(20px);border:1px solid rgba(255,255,255,.08);border-radius:14px;padding:16px;opacity:0;transform:translateX(20px);pointer-events:none;transition:all .3s}
+.route-panel.open{opacity:1;transform:translateX(0);pointer-events:all}
+.route-panel h3{font-size:12px;font-weight:700;margin-bottom:10px;display:flex;align-items:center;gap:6px}
+.route-select{width:100%;height:34px;padding:0 10px;border-radius:8px;border:1px solid rgba(255,255,255,.08);background:rgba(255,255,255,.04);color:#e2e4eb;font-size:11px;font-family:'Inter',sans-serif;outline:none;margin-bottom:8px;cursor:pointer}
+.route-result{background:rgba(255,255,255,.04);border-radius:10px;padding:12px;font-size:11px;line-height:1.6}
+.route-icon{font-size:18px;margin-right:4px}
+.route-label{font-weight:600;color:#a78bfa}
+.route-detail{color:#8b8fa3;margin-top:3px}
+.route-time{color:#34d399;font-weight:600}
+
+/* ===== FLOATING PANELS (History, Bookmarks) ===== */
+.float-panel{position:absolute;top:10px;z-index:700;width:280px;max-height:400px;background:rgba(16,18,28,.95);backdrop-filter:blur(20px);border:1px solid rgba(255,255,255,.08);border-radius:14px;padding:14px;opacity:0;transform:translateY(-10px);pointer-events:none;transition:all .3s;overflow:hidden;display:flex;flex-direction:column}
+.float-panel.open{opacity:1;transform:translateY(0);pointer-events:all}
+.float-panel.history{right:150px}
+.float-panel.bookmarks{right:110px}
+.float-panel h3{font-size:12px;font-weight:700;margin-bottom:8px;display:flex;align-items:center;gap:6px}
+.float-panel .panel-list{flex:1;overflow-y:auto;max-height:320px}
+.float-panel .panel-list::-webkit-scrollbar{width:3px}
+.float-panel .panel-list::-webkit-scrollbar-thumb{background:rgba(139,92,246,.3);border-radius:3px}
+.panel-item{padding:8px 10px;font-size:10px;border-radius:8px;cursor:pointer;transition:background .15s;border-bottom:1px solid rgba(255,255,255,.04);display:flex;flex-direction:column;gap:2px}
+.panel-item:hover{background:rgba(139,92,246,.1)}
+.panel-item .pi-name{font-weight:600;color:#e2e4eb}
+.panel-item .pi-meta{font-size:9px;color:#6b7080}
+.panel-empty{font-size:10px;color:#5f6578;padding:12px;text-align:center}
+.badge{position:absolute;top:-4px;right:-4px;min-width:16px;height:16px;border-radius:8px;background:#ef4444;color:#fff;font-size:8px;font-weight:700;display:flex;align-items:center;justify-content:center;padding:0 4px}
+
+/* ===== GEOLOCATION & BOTTOM CONTROLS ===== */
+.bottom-right-controls{position:absolute;bottom:20px;right:12px;z-index:800;display:flex;flex-direction:column;gap:8px}
+.geo-btn{background:rgba(16,18,28,0.9);width:40px;height:40px;border-radius:10px;font-size:18px}
+.chat-toggle{background:linear-gradient(135deg,#8b5cf6,#6d28d9);color:#fff;border:none}
+.user-marker{background:none;border:none}
+.user-dot{width:18px;height:18px;background:#3b82f6;border-radius:50%;border:3px solid #fff;box-shadow:0 0 12px rgba(59,130,246,.6);animation:geo-pulse 2s ease infinite}
+@keyframes geo-pulse{0%,100%{box-shadow:0 0 12px rgba(59,130,246,.6)}50%{box-shadow:0 0 24px rgba(59,130,246,.9)}}
+
+/* ===== RESPONSIVE ===== */
+@media(max-width:768px){
+.sidebar{position:fixed;left:0;top:52px;bottom:0;z-index:700;width:280px;min-width:280px}
+.sidebar.collapsed{margin-left:-280px}
+.chatbot{width:calc(100vw - 40px);right:20px}
+.search-box{width:180px}
+.weather-widget{display:none}
+.coord-box{display:none}
+}
+
+    </style>
+</head>
+<body>
+    <!-- Splash Screen -->
+    <div class="splash" id="splash">
+        <div class="splash-logo"><i class="fa-solid fa-graduation-cap"></i></div>
+        <div class="splash-title">Ottawa Education Map</div>
+        <div class="splash-sub">GIS Professional Dashboard</div>
+        <div class="progress-wrap">
+            <div class="progress-bar" id="splash-progress"></div>
+        </div>
+        <div class="progress-text" id="splash-text">0%</div>
+    </div>
+
+    <div class="app" id="app">
+        <!-- Top Bar -->
+        <header class="topbar">
+            <div class="topbar-title">
+                <div class="topbar-logo"><i class="fa-solid fa-map-location-dot"></i></div>
+                <div>
+                    <h1 data-i18n="title">Education Distribution Map of Ottawa</h1>
+                    <span data-i18n="subtitle">Interactive GIS Platform</span>
+                </div>
+            </div>
+            
+            <div class="search-box">
+                <input type="text" id="search-input" placeholder="Search schools..." autocomplete="off" />
+                <i class="fa-solid fa-magnifying-glass s-icon"></i>
+                <div class="search-results" id="search-results"></div>
+            </div>
+
+            <div class="topbar-spacer"></div>
+
+            <div class="weather-widget" id="weather-widget">
+                <i class="fa-solid fa-cloud w-icon" id="w-icon"></i>
+                <span class="w-temp" id="w-temp">--°C</span>
+                <span class="w-time" id="w-time">--:--</span>
+            </div>
+
+            <select class="lang-select" id="lang-select">
+                <option value="en">English</option>
+                <option value="id">Indonesia</option>
+                <option value="zh">中文</option>
+                <option value="ja">日本語</option>
+            </select>
+
+            <button class="btn-icon" id="btn-history" title="History">
+                <i class="fa-solid fa-clock-rotate-left"></i>
+                <div class="badge" id="badge-history" style="display:none">0</div>
+            </button>
+            <button class="btn-icon" id="btn-bookmarks" title="Bookmarks">
+                <i class="fa-solid fa-bookmark"></i>
+                <div class="badge" id="badge-bookmarks" style="display:none">0</div>
+            </button>
+            <button class="btn-icon" id="btn-sidebar" title="Toggle Sidebar">
+                <i class="fa-solid fa-bars"></i>
+            </button>
+        </header>
+
+        <!-- Sidebar -->
+        <aside class="sidebar" id="sidebar">
+            <div class="sidebar-body">
+                <div class="section">
+                    <div class="section-label"><i class="fa-solid fa-layer-group"></i> <span data-i18n="categories">Categories</span></div>
+                    <div id="cat-list"></div>
+                </div>
+                <div class="section">
+                    <div class="section-label"><i class="fa-solid fa-circle-info"></i> <span data-i18n="info">Information</span></div>
+                    <div class="info-card">
+                        <div class="info-row"><span class="info-label" data-i18n="dataSource">Data Source</span><span class="info-value">OSM Education</span></div>
+                        <div class="info-row"><span class="info-label" data-i18n="features">Features</span><span class="info-value" id="info-count">0</span></div>
+                    </div>
+                </div>
+                <div class="section">
+                    <div class="section-label"><i class="fa-solid fa-sitemap"></i> <span data-i18n="dataTree">Data Tree</span></div>
+                    <div class="tree-wrap" id="data-tree">
+                        <p style="font-size:11px;color:#5f6578;padding:8px">Loading...</p>
+                    </div>
+                </div>
+            </div>
+            <div class="sidebar-footer">
+                Ottawa Education GIS Platform &bull; Leaflet + OSM
+            </div>
+        </aside>
+
+        <!-- Floating Panels -->
+        <div class="float-panel history" id="panel-history">
+            <h3><i class="fa-solid fa-clock-rotate-left"></i> <span data-i18n="visitedLoc">Visited Locations</span></h3>
+            <div class="panel-list" id="list-history"></div>
+        </div>
+        <div class="float-panel bookmarks" id="panel-bookmarks">
+            <h3><i class="fa-solid fa-bookmark"></i> <span data-i18n="savedLoc">Saved Locations</span></h3>
+            <div class="panel-list" id="list-bookmarks"></div>
+        </div>
+        
+        <!-- Route Panel -->
+        <div class="route-panel" id="route-panel">
+            <h3><i class="fa-solid fa-route"></i> <span data-i18n="smartRoute">Smart Route</span></h3>
+            <select class="route-select" id="route-dest">
+                <option value="">— Select Destination —</option>
+            </select>
+            <div class="route-result" id="route-result">
+                <span style="color:#6b7080" data-i18n="routeHint">Select a destination to see travel recommendations.</span>
+            </div>
+        </div>
+
+        <!-- Map Area -->
+        <div class="map-wrapper">
+            <div id="map"></div>
+            
+            <!-- Controls container for bottom right (Chatbot, Route, Geo) -->
+            <div class="bottom-right-controls">
+                <button class="btn-icon chat-toggle geo-btn" id="chat-toggle" title="AI Assistant">
+                    <i class="fa-solid fa-robot"></i>
+                </button>
+                <button class="btn-icon geo-btn" id="route-toggle" title="Smart Route">
+                    <i class="fa-solid fa-route"></i>
+                </button>
+                <button class="btn-icon geo-btn" id="btn-geo" title="Explore Mode">
+                    <i class="fa-solid fa-street-view"></i>
+                </button>
+            </div>
+
+            <!-- Chatbot Panel -->
+            <div class="chatbot" id="chatbot">
+                <div class="chat-header">
+                    <div class="chat-header-icon"><i class="fa-solid fa-robot"></i></div>
+                    <div class="chat-header-text">
+                        <h3>GIS Assistant</h3>
+                        <span>Powered by Ottawa Education Data</span>
+                    </div>
+                    <button class="chat-close" id="chat-close"><i class="fa-solid fa-xmark"></i></button>
+                </div>
+                <div class="chat-messages" id="chat-messages"></div>
+                <div class="chat-input-area">
+                    <input type="text" id="chat-input" placeholder="Tanya tentang data peta …" />
+                    <button id="chat-send"><i class="fa-solid fa-paper-plane"></i></button>
+                </div>
+            </div>
+
+            <div class="legend-panel">
+                <div class="legend-title" data-i18n="legend">Legend</div>
+                <div id="legend-items"></div>
+            </div>
+
+            <div class="basemap-bar">
+                <div class="bm-btn active" data-bm="osm" data-label="Street" style="background-image:url('https://tile.openstreetmap.org/3/4/2.png')"></div>
+                <div class="bm-btn" data-bm="dark" data-label="Dark" style="background-image:url('https://basemaps.cartocdn.com/dark_all/3/4/2.png')"></div>
+                <div class="bm-btn" data-bm="satellite" data-label="Sat" style="background-image:url('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/3/2/4')"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Leaflet.awesome-markers/2.0.2/leaflet.awesome-markers.min.js"></script>
+    
+    <script>
+        const I18N = {
+    en: {
+        title: 'Education Distribution Map of Ottawa',
+        subtitle: 'Interactive GIS Platform',
+        categories: 'Categories',
+        info: 'Information',
+        dataSource: 'Data Source',
+        features: 'Features',
+        dataTree: 'Data Tree',
+        visitedLoc: 'Visited Locations',
+        savedLoc: 'Saved Locations',
+        legend: 'Legend',
+        searchPlaceholder: 'Search schools...',
+        emptyHistory: 'No visited locations yet.',
+        emptyBookmarks: 'No saved locations yet.',
+        saveBtn: 'Save Location',
+        removeBtn: 'Remove Bookmark'
+    },
+    id: {
+        title: 'Peta Distribusi Pendidikan Ottawa',
+        subtitle: 'Platform GIS Interaktif',
+        categories: 'Kategori',
+        info: 'Informasi',
+        dataSource: 'Sumber Data',
+        features: 'Jumlah Fitur',
+        dataTree: 'Pohon Data',
+        visitedLoc: 'Riwayat Kunjungan',
+        savedLoc: 'Lokasi Tersimpan',
+        legend: 'Legenda',
+        searchPlaceholder: 'Cari sekolah...',
+        emptyHistory: 'Belum ada riwayat.',
+        emptyBookmarks: 'Belum ada lokasi tersimpan.',
+        saveBtn: 'Simpan Lokasi',
+        removeBtn: 'Hapus Simpanan'
+    },
+    zh: {
+        title: '渥太华教育分布图',
+        subtitle: '交互式地理信息系统',
+        categories: '分类',
+        info: '信息',
+        dataSource: '数据源',
+        features: '特征数',
+        dataTree: '数据树',
+        visitedLoc: '访问记录',
+        savedLoc: '已存地点',
+        legend: '图例',
+        searchPlaceholder: '搜索学校...',
+        emptyHistory: '暂无访问记录',
+        emptyBookmarks: '暂无保存记录',
+        saveBtn: '保存',
+        removeBtn: '移除保存'
+    },
+    ja: {
+        title: 'オタワ教育分布マップ',
+        subtitle: 'インタラクティブGIS',
+        categories: 'カテゴリー',
+        info: '情報',
+        dataSource: 'データソース',
+        features: '特徴数',
+        dataTree: 'データツリー',
+        visitedLoc: '訪問履歴',
+        savedLoc: '保存された場所',
+        legend: '凡例',
+        searchPlaceholder: '学校を検索...',
+        emptyHistory: '履歴がありません。',
+        emptyBookmarks: '保存されていません。',
+        saveBtn: '保存する',
+        removeBtn: '保存を削除'
+    }
+};
+
+let currentLang = 'id';
+function setLanguage(lang) {
+    currentLang = lang;
+    const t = I18N[lang];
+    document.querySelectorAll('[data-i18n]').forEach(el => {
+        el.innerText = t[el.getAttribute('data-i18n')];
+    });
+    document.getElementById('search-input').placeholder = t.searchPlaceholder;
+    renderPanels();
+}
+
+// Categories Definition
+const CATS = {
+    kindergarten: { label: 'Kindergarten', color: '#ec4899', icon: 'fa-child', fa: 'pink' },
+    elementary: { label: 'Elementary School', color: '#ef4444', icon: 'fa-school', fa: 'red' },
+    middle: { label: 'Middle School', color: '#f59e0b', icon: 'fa-school-flag', fa: 'orange' },
+    high: { label: 'High School', color: '#10b981', icon: 'fa-graduation-cap', fa: 'green' },
+    university: { label: 'University / College', color: '#8b5cf6', icon: 'fa-university', fa: 'purple' },
+    other: { label: 'Other Education', color: '#64748b', icon: 'fa-book', fa: 'gray' }
+};
+
+function classify(props) {
+    const a = props.amenity || '';
+    const i = props.isced_level || '';
+    if (a === 'kindergarten') return 'kindergarten';
+    if (a === 'university' || a === 'college') return 'university';
+    if (a === 'school' || a === 'prep_school') {
+        if (i.includes('3')) return 'high';
+        if (i.includes('2')) return 'middle';
+        if (i.includes('1')) return 'elementary';
+        return 'elementary';
+    }
+    return 'other';
+}
+
+// Operating Hours Logic
+const OPERATING_HOURS = {
+    kindergarten: { hours: '07:30 – 16:00', days: 'Senin – Jumat', note: 'Jam layanan day-care mungkin berbeda' },
+    elementary: { hours: '08:00 – 15:30', days: 'Senin – Jumat', note: 'Sesuai kalender akademik' },
+    middle: { hours: '08:00 – 15:45', days: 'Senin – Jumat', note: 'Sesuai kalender akademik' },
+    high: { hours: '08:30 – 16:00', days: 'Senin – Jumat', note: 'Sesuai kalender akademik' },
+    university: { hours: '07:00 – 22:00', days: 'Senin – Sabtu', note: 'Perpustakaan buka hingga malam' },
+    other: { hours: '09:00 – 17:00', days: 'Senin – Jumat', note: 'Jam bervariasi' }
+};
+
+function getStatusNow(cat) {
+    const now = new Date();
+    const hour = now.getHours();
+    const minute = now.getMinutes();
+    const day = now.getDay(); // 0=Sun, 6=Sat
+    const oh = OPERATING_HOURS[cat];
+    if (!oh) return { open: false, text: 'Tidak diketahui' };
+
+    const [openH, openM] = oh.hours.split('–')[0].trim().split(':').map(Number);
+    const [closeH, closeM] = oh.hours.split('–')[1].trim().split(':').map(Number);
+    const nowMin = hour * 60 + minute;
+    const openMin = openH * 60 + openM;
+    const closeMin = closeH * 60 + closeM;
+
+    let isWeekday = day >= 1 && day <= 5;
+    let isSaturday = day === 6;
+
+    let isOpen = false;
+    if (oh.days === 'Setiap Hari') {
+        isOpen = nowMin >= openMin && nowMin < closeMin;
+    } else if (oh.days.includes('Sabtu') && isSaturday) {
+        isOpen = nowMin >= openMin && nowMin < closeMin;
+    } else if (isWeekday) {
+        isOpen = nowMin >= openMin && nowMin < closeMin;
+    }
+
+    return {
+        open: isOpen,
+        text: isOpen ? '🟢 Sedang Buka' : '🔴 Sedang Tutup',
+        hours: oh.hours,
+        days: oh.days
+    };
+}
+
+// Global State
+let map, allFeatures = [], layers = {}, groups = {}, geoMarker = null;
+let history = JSON.parse(localStorage.getItem('gis_history') || '[]');
+let bookmarks = JSON.parse(localStorage.getItem('gis_bookmarks') || '[]');
+
+// Init
+function initSplash() {
+    let p = 0;
+    const bar = document.getElementById('splash-progress');
+    const txt = document.getElementById('splash-text');
+    const interval = setInterval(() => {
+        p += Math.random() * 15;
+        if (p > 100) p = 100;
+        bar.style.width = p + '%';
+        txt.innerText = Math.round(p) + '%';
+        if (p === 100) {
+            clearInterval(interval);
+            setTimeout(() => {
+                document.getElementById('splash').classList.add('hide');
+                document.getElementById('app').classList.add('show');
+                initApp();
+            }, 500);
+        }
+    }, 100);
+}
+
+function initApp() {
+    map = L.map('map', { center: [45.35, -75.7], zoom: 11, zoomControl: false });
+    L.control.zoom({ position: 'topright' }).addTo(map);
+
+    const bms = {
+        osm: L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }),
+        dark: L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', { maxZoom: 19 }),
+        sat: L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}')
+    };
+    bms.osm.addTo(map);
+    
+    document.querySelectorAll('.bm-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            document.querySelectorAll('.bm-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            Object.values(bms).forEach(l => map.removeLayer(l));
+            bms[btn.dataset.bm].addTo(map);
+        });
+    });
+
+    for (let k in CATS) groups[k] = L.layerGroup().addTo(map);
+
+    fetch('./UTS_FEMAS_OTTAWA_EDUCATION.geojson')
+        .then(r => r.json())
+        .then(data => {
+            allFeatures = data.features;
+            document.getElementById('info-count').innerText = allFeatures.length;
+            
+            const counts = {};
+            for(let k in CATS) counts[k] = 0;
+
+            allFeatures.forEach((f, i) => {
+                const cat = classify(f.properties);
+                counts[cat]++;
+                const ll = f.geometry.type === 'Point' 
+                    ? [f.geometry.coordinates[1], f.geometry.coordinates[0]] 
+                    : null;
+                
+                let layer;
+                if(ll) {
+                    layer = L.marker(ll, { icon: L.AwesomeMarkers.icon({
+                        icon: CATS[cat].icon, prefix: 'fa', markerColor: CATS[cat].fa, iconColor: '#fff'
+                    })});
+                } else {
+                    layer = L.geoJSON(f, { style: { color: CATS[cat].color, weight:2, fillOpacity:0.2 }});
+                }
+                
+                layer.bindPopup(() => buildPopup(f.properties, i, cat));
+                layer.on('click', () => addHistory(f.properties, cat, i));
+                layer.addTo(groups[cat]);
+                layers[i] = layer;
+            });
+            
+            buildSidebar(counts);
+            buildDataTree();
+            buildLegend(counts);
+            if(allFeatures.length) map.fitBounds(L.geoJSON(data).getBounds());
+        });
+
+    setupUI();
+    setInterval(updateWeather, 60000);
+    updateWeather();
+    setLanguage('id');
+}
+
+function buildPopup(props, idx, cat) {
+    const isBM = bookmarks.find(b => b.id === props.osm_id);
+    const title = props.name || 'Unnamed Facility';
+    const status = getStatusNow(cat);
+    const statusColor = status.open ? '#34d399' : '#ef4444';
+    
+    return `
+        <div class="popup-title"><i class="fa-solid ${CATS[cat].icon}"></i> ${title}</div>
+        <span class="popup-cat-badge" style="background:${CATS[cat].color}22;color:${CATS[cat].color}">${CATS[cat].label}</span>
+        
+        <div class="popup-hours">
+            <div class="popup-hours-status" style="color:${statusColor};font-weight:600;font-size:12px;margin:8px 0 4px">${status.text}</div>
+            <div style="font-size:11px;color:#8b8fa3">🕐 Jam: <b style="color:#e2e4eb">${status.hours}</b></div>
+            <div style="font-size:11px;color:#8b8fa3">📅 Hari: <b style="color:#e2e4eb">${status.days}</b></div>
+        </div>
+
+        <table class="popup-table" style="margin-top:8px">
+            <tr><td>Category</td><td>${props.amenity || 'N/A'}</td></tr>
+            <tr><td>ISCED</td><td>${props.isced_level || 'N/A'}</td></tr>
+            <tr><td>OSM ID</td><td>${props.osm_id || 'N/A'}</td></tr>
+        </table>
+        <div class="popup-links">
+            <a href="https://www.google.com/search?q=${encodeURIComponent(title + ' Ottawa official website')}" target="_blank" class="popup-link-btn official">
+                <i class="fa-solid fa-globe"></i> Official Site
+            </a>
+            <a href="https://www.google.com/maps/search/${encodeURIComponent(title + ' Ottawa')}" target="_blank" class="popup-link-btn maps">
+                <i class="fa-solid fa-map-location-dot"></i> Google Maps
+            </a>
+            <button onclick="toggleBookmark(${idx}, '${props.osm_id}')" class="popup-link-btn search">
+                <i class="fa-solid fa-bookmark"></i> ${isBM ? I18N[currentLang].removeBtn : I18N[currentLang].saveBtn}
+            </button>
+        </div>
+    `;
+}
+
+function addHistory(props, cat, idx) {
+    const name = props.name || 'Unnamed';
+    history = history.filter(h => h.id !== props.osm_id);
+    history.unshift({ id: props.osm_id, name, cat, time: new Date().toLocaleTimeString(), idx });
+    if(history.length > 20) history.pop();
+    localStorage.setItem('gis_history', JSON.stringify(history));
+    renderPanels();
+}
+
+window.toggleBookmark = function(idx, osm_id) {
+    const f = allFeatures[idx];
+    const cat = classify(f.properties);
+    const existing = bookmarks.findIndex(b => b.id == osm_id);
+    if(existing >= 0) bookmarks.splice(existing, 1);
+    else bookmarks.unshift({ id: osm_id, name: f.properties.name || 'Unnamed', cat, idx });
+    localStorage.setItem('gis_bookmarks', JSON.stringify(bookmarks));
+    renderPanels();
+    layers[idx].openPopup(); // refresh popup
+}
+
+function renderPanels() {
+    // History
+    const hl = document.getElementById('list-history');
+    hl.innerHTML = history.length ? '' : `<div class="panel-empty">${I18N[currentLang].emptyHistory}</div>`;
+    history.forEach(h => {
+        const d = document.createElement('div');
+        d.className = 'panel-item';
+        d.innerHTML = `<div class="pi-name">${h.name}</div><div class="pi-meta"><i class="fa-solid ${CATS[h.cat].icon}"></i> ${CATS[h.cat].label} &bull; ${h.time}</div>`;
+        d.onclick = () => focusFeature(h.idx);
+        hl.appendChild(d);
+    });
+    const hb = document.getElementById('badge-history');
+    hb.innerText = history.length;
+    hb.style.display = history.length ? 'flex' : 'none';
+
+    // Bookmarks
+    const bl = document.getElementById('list-bookmarks');
+    bl.innerHTML = bookmarks.length ? '' : `<div class="panel-empty">${I18N[currentLang].emptyBookmarks}</div>`;
+    bookmarks.forEach(b => {
+        const d = document.createElement('div');
+        d.className = 'panel-item';
+        d.innerHTML = `<div class="pi-name">${b.name}</div><div class="pi-meta"><i class="fa-solid ${CATS[b.cat].icon}"></i> ${CATS[b.cat].label}</div>`;
+        d.onclick = () => focusFeature(b.idx);
+        bl.appendChild(d);
+    });
+    const bb = document.getElementById('badge-bookmarks');
+    bb.innerText = bookmarks.length;
+    bb.style.display = bookmarks.length ? 'flex' : 'none';
+}
+
+function focusFeature(idx) {
+    const l = layers[idx];
+    if(l.getLatLng) map.setView(l.getLatLng(), 16);
+    else if(l.getBounds) map.fitBounds(l.getBounds());
+    l.openPopup();
+}
+
+function buildSidebar(counts) {
+    const c = document.getElementById('cat-list');
+    for(let k in CATS) {
+        if(!counts[k]) continue;
+        const d = document.createElement('div');
+        d.className = 'cat-card';
+        d.innerHTML = `
+            <div class="cat-icon" style="background:${CATS[k].color}22;color:${CATS[k].color}"><i class="fa-solid ${CATS[k].icon}"></i></div>
+            <div class="cat-info"><div class="cat-name">${CATS[k].label}</div><div class="cat-count">${counts[k]}</div></div>
+            <label class="cat-toggle" onclick="event.stopPropagation()"><input type="checkbox" checked><span class="slider"></span></label>
+        `;
+        d.querySelector('input').onchange = e => e.target.checked ? groups[k].addTo(map) : map.removeLayer(groups[k]);
+        d.onclick = () => map.fitBounds(groups[k].getBounds());
+        c.appendChild(d);
+    }
+}
+
+function buildDataTree() {
+    const c = document.getElementById('data-tree');
+    c.innerHTML = '';
+    allFeatures.forEach((f, i) => {
+        const cat = classify(f.properties);
+        const d = document.createElement('div');
+        d.className = 'tree-item';
+        d.innerHTML = `<i class="fa-solid ${CATS[cat].icon}" style="color:${CATS[cat].color}"></i> ${f.properties.name || 'Unnamed'}`;
+        d.onclick = () => focusFeature(i);
+        c.appendChild(d);
+    });
+}
+
+function buildLegend(counts) {
+    const el = document.getElementById('legend-items');
+    for(let k in CATS) {
+        if(!counts[k]) continue;
+        el.innerHTML += `<div class="legend-item"><div class="legend-dot" style="background:${CATS[k].color}"></div><span>${CATS[k].label}</span></div>`;
+    }
+}
+
+function setupUI() {
+    document.getElementById('lang-select').onchange = e => setLanguage(e.target.value);
+    document.getElementById('btn-sidebar').onclick = () => document.getElementById('sidebar').classList.toggle('collapsed');
+    
+    // Panels
+    const ph = document.getElementById('panel-history');
+    const pb = document.getElementById('panel-bookmarks');
+    document.getElementById('btn-history').onclick = () => { pb.classList.remove('open'); ph.classList.toggle('open'); };
+    document.getElementById('btn-bookmarks').onclick = () => { ph.classList.remove('open'); pb.classList.toggle('open'); };
+
+    // Geolocation Explore
+    const geoBtn = document.getElementById('btn-geo');
+    geoBtn.onclick = () => {
+        if(geoMarker) { map.removeLayer(geoMarker); geoMarker = null; geoBtn.style.color = ''; return; }
+        map.locate({setView: true, maxZoom: 16, watch: true});
+        geoBtn.style.color = '#3b82f6';
+    };
+    map.on('locationfound', e => {
+        if(!geoMarker) {
+            geoMarker = L.marker(e.latlng, { icon: L.divIcon({ className: 'user-marker', html: '<div class="user-dot"></div>' }) }).addTo(map);
+        } else geoMarker.setLatLng(e.latlng);
+    });
+
+    // Search
+    const search = document.getElementById('search-input');
+    const res = document.getElementById('search-results');
+    search.oninput = () => {
+        const q = search.value.toLowerCase();
+        res.innerHTML = '';
+        if(q.length < 2) { res.classList.remove('show'); return; }
+        const m = allFeatures.map((f,i) => ({f,i})).filter(x => (x.f.properties.name||'').toLowerCase().includes(q)).slice(0,10);
+        m.forEach(x => {
+            const cat = classify(x.f.properties);
+            const d = document.createElement('div');
+            d.className = 'search-result-item';
+            d.innerHTML = `<i class="fa-solid ${CATS[cat].icon}" style="color:${CATS[cat].color}"></i><span class="sr-name">${x.f.properties.name}</span>`;
+            d.onclick = () => { focusFeature(x.i); res.classList.remove('show'); search.value = ''; };
+            res.appendChild(d);
+        });
+        res.classList.add('show');
+    };
+
+    // Chatbot Logic
+    const chatToggle = document.getElementById('chat-toggle');
+    const chatbot = document.getElementById('chatbot');
+    const chatClose = document.getElementById('chat-close');
+    const chatInput = document.getElementById('chat-input');
+    const chatSend = document.getElementById('chat-send');
+    const chatMsgs = document.getElementById('chat-messages');
+
+    chatToggle.onclick = () => { chatbot.classList.toggle('open'); chatToggle.classList.toggle('active'); };
+    chatClose.onclick = () => { chatbot.classList.remove('open'); chatToggle.classList.remove('active'); };
+
+    function addChatMsg(text, sender) {
+        const d = document.createElement('div');
+        d.className = `chat-msg ${sender}`;
+        d.innerHTML = `<div class="chat-bubble">${text}</div>`;
+        chatMsgs.appendChild(d);
+        chatMsgs.scrollTop = chatMsgs.scrollHeight;
+    }
+
+    function processChatQuery(q) {
+        const ql = q.toLowerCase();
+        if(ql.includes('jumlah') || ql.includes('berapa') || ql.includes('count')) {
+            return `📊 Total lokasi pendidikan: <b>${allFeatures.length}</b> fasilitas.`;
+        }
+        if(ql.includes('lokasi') || ql.includes('cari') || ql.includes('where')) {
+            const matches = allFeatures.filter(f => (f.properties.name||'').toLowerCase().includes(ql.replace(/lokasi|cari|where/g,'').trim()));
+            if(matches.length) return `📍 Ditemukan ${matches.length} lokasi. Beberapa diantaranya: <br> ${matches.slice(0,3).map(m=>'• '+m.properties.name).join('<br>')}`;
+        }
+        return `🤖 Halo! Saya asisten AI. Anda bisa bertanya "Berapa jumlah sekolah?" atau "Cari lokasi [nama]".`;
+    }
+
+    chatSend.onclick = () => {
+        const v = chatInput.value.trim();
+        if(!v) return;
+        addChatMsg(v, 'user');
+        chatInput.value = '';
+        setTimeout(() => addChatMsg(processChatQuery(v), 'bot'), 500);
+    };
+    chatInput.onkeypress = (e) => { if(e.key === 'Enter') chatSend.onclick(); };
+    addChatMsg('👋 Halo! Saya asisten GIS Anda. Ada yang bisa dibantu?', 'bot');
+
+    // Route Logic
+    const routeToggle = document.getElementById('route-toggle');
+    const routePanel = document.getElementById('route-panel');
+    const routeDest = document.getElementById('route-dest');
+    const routeResult = document.getElementById('route-result');
+    
+    routeToggle.onclick = () => {
+        routePanel.classList.toggle('open');
+        if(routeDest.children.length <= 1) {
+            allFeatures.filter(f => f.properties.name).forEach((f, i) => {
+                const opt = document.createElement('option');
+                opt.value = i;
+                opt.innerText = f.properties.name;
+                routeDest.appendChild(opt);
+            });
+        }
+    };
+    
+    routeDest.onchange = () => {
+        if(!routeDest.value) { routeResult.innerHTML = '<span style="color:#6b7080">Select a destination</span>'; return; }
+        const f = allFeatures[routeDest.value];
+        const h = new Date().getHours();
+        const dist = Math.random() * 10 + 1; // Simulated distance 1-11 km
+        let mode = 'Car 🚗';
+        if(dist < 2) mode = 'Walking 🚶 / Bicycle 🚲';
+        else if (h >= 7 && h <= 9 || h >= 16 && h <= 18) mode = 'Public Transit 🚌 (Rush Hour)';
+        
+        routeResult.innerHTML = `
+            <div><span class="route-label">${f.properties.name}</span></div>
+            <div class="route-detail">📏 Distance: ~${dist.toFixed(1)} km</div>
+            <div class="route-detail">🚦 Recommended: <b>${mode}</b></div>
+            <div class="route-detail">⏱️ Estimated: <span class="route-time">${Math.round(dist * 3)} mins</span></div>
+        `;
+    };
+}
+
+function updateWeather() {
+    const d = new Date();
+    document.getElementById('w-time').innerText = d.toLocaleTimeString('en-US', {hour:'2-digit', minute:'2-digit', timeZone:'America/Toronto'});
+    const h = d.getHours();
+    const icon = document.getElementById('w-icon');
+    let t = 15;
+    if(h > 6 && h < 18) { icon.className = 'fa-solid fa-sun w-icon'; icon.style.color = '#fde047'; t=22; }
+    else { icon.className = 'fa-solid fa-moon w-icon'; icon.style.color = '#93c5fd'; t=12; }
+    document.getElementById('w-temp').innerText = t + '°C';
+}
+
+initSplash();
+
+    </script>
+</body>
+</html>

@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Education Distribution Map of Ottawa</title>
+    <meta name="description" content="Advanced WebGIS for Ottawa Education with history, bookmarks, and weather." />
+    
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/Leaflet.awesome-markers/2.0.2/leaflet.awesome-markers.css" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+    
+    <style>
+        /* INJECT_CSS */
+    </style>
+</head>
+<body>
+    <!-- Splash Screen -->
+    <div class="splash" id="splash">
+        <div class="splash-logo"><i class="fa-solid fa-graduation-cap"></i></div>
+        <div class="splash-title">Ottawa Education Map</div>
+        <div class="splash-sub">GIS Professional Dashboard</div>
+        <div class="progress-wrap">
+            <div class="progress-bar" id="splash-progress"></div>
+        </div>
+        <div class="progress-text" id="splash-text">0%</div>
+    </div>
+
+    <div class="app" id="app">
+        <!-- Top Bar -->
+        <header class="topbar">
+            <div class="topbar-title">
+                <div class="topbar-logo"><i class="fa-solid fa-map-location-dot"></i></div>
+                <div>
+                    <h1 data-i18n="title">Education Distribution Map of Ottawa</h1>
+                    <span data-i18n="subtitle">Interactive GIS Platform</span>
+                </div>
+            </div>
+            
+            <div class="search-box">
+                <input type="text" id="search-input" placeholder="Search schools..." autocomplete="off" />
+                <i class="fa-solid fa-magnifying-glass s-icon"></i>
+                <div class="search-results" id="search-results"></div>
+            </div>
+
+            <div class="topbar-spacer"></div>
+
+            <div class="weather-widget" id="weather-widget">
+                <i class="fa-solid fa-cloud w-icon" id="w-icon"></i>
+                <span class="w-temp" id="w-temp">--°C</span>
+                <span class="w-time" id="w-time">--:--</span>
+            </div>
+
+            <select class="lang-select" id="lang-select">
+                <option value="en">English</option>
+                <option value="id">Indonesia</option>
+                <option value="zh">中文</option>
+                <option value="ja">日本語</option>
+            </select>
+
+            <button class="btn-icon" id="btn-history" title="History">
+                <i class="fa-solid fa-clock-rotate-left"></i>
+                <div class="badge" id="badge-history" style="display:none">0</div>
+            </button>
+            <button class="btn-icon" id="btn-bookmarks" title="Bookmarks">
+                <i class="fa-solid fa-bookmark"></i>
+                <div class="badge" id="badge-bookmarks" style="display:none">0</div>
+            </button>
+            <button class="btn-icon" id="btn-sidebar" title="Toggle Sidebar">
+                <i class="fa-solid fa-bars"></i>
+            </button>
+        </header>
+
+        <!-- Sidebar -->
+        <aside class="sidebar" id="sidebar">
+            <div class="sidebar-body">
+                <div class="section">
+                    <div class="section-label"><i class="fa-solid fa-layer-group"></i> <span data-i18n="categories">Categories</span></div>
+                    <div id="cat-list"></div>
+                </div>
+                <div class="section">
+                    <div class="section-label"><i class="fa-solid fa-circle-info"></i> <span data-i18n="info">Information</span></div>
+                    <div class="info-card">
+                        <div class="info-row"><span class="info-label" data-i18n="dataSource">Data Source</span><span class="info-value">OSM Education</span></div>
+                        <div class="info-row"><span class="info-label" data-i18n="features">Features</span><span class="info-value" id="info-count">0</span></div>
+                    </div>
+                </div>
+                <div class="section">
+                    <div class="section-label"><i class="fa-solid fa-sitemap"></i> <span data-i18n="dataTree">Data Tree</span></div>
+                    <div class="tree-wrap" id="data-tree">
+                        <p style="font-size:11px;color:#5f6578;padding:8px">Loading...</p>
+                    </div>
+                </div>
+            </div>
+            <div class="sidebar-footer">
+                Ottawa Education GIS Platform &bull; Leaflet + OSM
+            </div>
+        </aside>
+
+        <!-- Floating Panels -->
+        <div class="float-panel history" id="panel-history">
+            <h3><i class="fa-solid fa-clock-rotate-left"></i> <span data-i18n="visitedLoc">Visited Locations</span></h3>
+            <div class="panel-list" id="list-history"></div>
+        </div>
+        <div class="float-panel bookmarks" id="panel-bookmarks">
+            <h3><i class="fa-solid fa-bookmark"></i> <span data-i18n="savedLoc">Saved Locations</span></h3>
+            <div class="panel-list" id="list-bookmarks"></div>
+        </div>
+        
+        <!-- Route Panel -->
+        <div class="route-panel" id="route-panel">
+            <h3><i class="fa-solid fa-route"></i> <span data-i18n="smartRoute">Smart Route</span></h3>
+            <select class="route-select" id="route-dest">
+                <option value="">— Select Destination —</option>
+            </select>
+            <div class="route-result" id="route-result">
+                <span style="color:#6b7080" data-i18n="routeHint">Select a destination to see travel recommendations.</span>
+            </div>
+        </div>
+
+        <!-- Map Area -->
+        <div class="map-wrapper">
+            <div id="map"></div>
+            
+            <!-- Controls container for bottom right (Chatbot, Route, Geo) -->
+            <div class="bottom-right-controls">
+                <button class="btn-icon chat-toggle geo-btn" id="chat-toggle" title="AI Assistant">
+                    <i class="fa-solid fa-robot"></i>
+                </button>
+                <button class="btn-icon geo-btn" id="route-toggle" title="Smart Route">
+                    <i class="fa-solid fa-route"></i>
+                </button>
+                <button class="btn-icon geo-btn" id="btn-geo" title="Explore Mode">
+                    <i class="fa-solid fa-street-view"></i>
+                </button>
+            </div>
+
+            <!-- Chatbot Panel -->
+            <div class="chatbot" id="chatbot">
+                <div class="chat-header">
+                    <div class="chat-header-icon"><i class="fa-solid fa-robot"></i></div>
+                    <div class="chat-header-text">
+                        <h3>GIS Assistant</h3>
+                        <span>Powered by Ottawa Education Data</span>
+                    </div>
+                    <button class="chat-close" id="chat-close"><i class="fa-solid fa-xmark"></i></button>
+                </div>
+                <div class="chat-messages" id="chat-messages"></div>
+                <div class="chat-input-area">
+                    <input type="text" id="chat-input" placeholder="Tanya tentang data peta …" />
+                    <button id="chat-send"><i class="fa-solid fa-paper-plane"></i></button>
+                </div>
+            </div>
+
+            <div class="legend-panel">
+                <div class="legend-title" data-i18n="legend">Legend</div>
+                <div id="legend-items"></div>
+            </div>
+
+            <div class="basemap-bar">
+                <div class="bm-btn active" data-bm="osm" data-label="Street" style="background-image:url('https://tile.openstreetmap.org/3/4/2.png')"></div>
+                <div class="bm-btn" data-bm="dark" data-label="Dark" style="background-image:url('https://basemaps.cartocdn.com/dark_all/3/4/2.png')"></div>
+                <div class="bm-btn" data-bm="satellite" data-label="Sat" style="background-image:url('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/3/2/4')"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Leaflet.awesome-markers/2.0.2/leaflet.awesome-markers.min.js"></script>
+    
+    <script>
+        /* INJECT_JS */
+    </script>
+</body>
+</html>
